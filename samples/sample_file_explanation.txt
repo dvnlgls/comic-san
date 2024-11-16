@@ -1,0 +1,21 @@
+This file explains the nature of dirrerent sample files:
+
+sample_1:
+- a basic format with 12 panels
+- all panels are approximately equal size
+
+sample_2:
+- a crazy cover image with all sorts of images
+- individual panels and stitched images are shown
+
+sample_3:
+- a file with a big title, to show how such a case is handled
+
+sample_4:
+- a file with panels that fill the entire width and other smaller ones
+
+sample_5:
+- a file with a very big panel and a round panel. (note, irregular shapes may not always be properly handled by the dependent library)
+
+sample_6:
+- a file with a full width panel without a well defined visible boundary.

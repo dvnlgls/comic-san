@@ -1,22 +1,24 @@
 /*------------------------------------------------------------------------
 COMIC-SAN
 
-Comic-san is a Mac (possibly Linux too) command line software to create e-books from comic books, that are
+Comic-san is a Mac (possibly Linux too) software to create e-books from comic books, that are
 suitable for (small) e-book readers, including black & white variants.
 
 ------------------------------------------------------------------------*/
-import { existsSync, mkdirSync, readdirSync } from 'fs';
-import { execSync } from 'child_process';
-import { createInterface } from 'readline/promises';
+
+const fs = require('fs');
+const { execSync } = require('child_process');
+const readline = require('readline/promises');
 
 //------------------------------------------------------------------------
 // NOTE: The following must be set properly
 
 // absolute path to your data directory WITH the trailing slash eg: /Users/Frodo/Documents/comic-san/data/
-const dirData = '/Users/dvn/Downloads/kotoon/node/data/';
+const dirData = '';
 const originalPageWidth = 3000; // width of a single page of the original comic book (in px).
-const bwResizeWidth = 1448; // width of the black & white panels apropriate for your target device
-const bwResizeHeight = 1072; // height of the black & white panels apropriate for your target device
+const bwPanelResizeWidth = 1448; // width of the black & white panels apropriate for your target device
+const bwPanelResizeHeight = 1072; // height of the black & white panels apropriate for your target device
+
 //------------------------------------------------------------------------
 
 const dirExtractedPages = dirData + 'extracted_pages/'; // dir to store pages extracted from the original book
@@ -25,7 +27,7 @@ const dirStitchedColor = dirData + 'stitched_color/'; // dir to store the stitch
 const dirStitchedBw = dirData + 'stitched_bw/'; // dir to store the stitched b/w panels
 const dirAssets = dirData + 'assets/'; // // dir to store the newly created books and any other useful stuff like panels etc
 
-const spacerImage = '/Users/dvn/Downloads/kotoon/node/space.jpg'; // image used to add gap between panels. modify it however you like
+const spacerImage = ''; // image used to add gap between panels. modify it however you like
 
 let bookName = '';
 
@@ -39,7 +41,7 @@ main();
 //------------------------------------------------------------------------
 
 async function main() {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // order of functions is critical.
   getArguments(); // primitive method to get args passed on the cmd line
@@ -77,6 +79,19 @@ async function main() {
 
 // --------------------------------------------------------
 
+function getArguments() {
+  process.argv.slice(2).forEach(v => {
+    const flag = v.toLocaleLowerCase().trim();
+
+    if (flag === '-log') {
+      args.log = true;
+    }
+    if (flag === '-cpage') {
+      args.cpage = true;
+    }
+  });
+}
+
 function init() {
   // make the required directories if they don't exist
   // cleanup if they exist
@@ -92,25 +107,25 @@ function init() {
 
   dirs.forEach(v => {
     const dir = dirData + v;
-    if (existsSync(dir)) {
+    if (fs.existsSync(dir)) {
       execSync('rm -rf  ' + dir + '/*.*', { encoding: 'utf8' });
     } else {
-      mkdirSync(dir);
+      fs.mkdirSync(dir);
     }
   });
 }
 
-function getArguments() {
-  process.argv.slice(2).forEach(v => {
-    const flag = v.toLocaleLowerCase().trim();
+function findBookName() {
+  // this function assumes theres is only one book in the data dir
+  const files = fs.readdirSync(dirData);
 
-    if (flag === '-log') {
-      args.log = true;
-    }
-    if (flag === '-cpage') {
-      args.cpage = true;
+  files.forEach(f => {
+    if (bookName === '' && f.split('.').pop() === 'cbz') {
+      bookName = f.replace('.cbz', ''); // assumes a sane file name!
     }
   });
+
+  log('Status: Processing book: ' + bookName)
 }
 
 function unzip() {
@@ -133,22 +148,9 @@ function convertToGreyScale() {
 
 function resizeBwPanels() {
   log('Status: Resizing B/W panels');
-  const resolution = bwResizeWidth + 'x' + bwResizeHeight;
+  const resolution = bwPanelResizeWidth + 'x' + bwPanelResizeHeight;
 
   execSync('mogrify -resize ' + resolution + ' ' + dirStitchedBw + '*.jpg')
-}
-
-function findBookName() {
-  // this function assumes theres is only one book in the data dir
-  const files = readdirSync(dirData);
-
-  files.forEach(f => {
-    if (bookName === '' && f.split('.').pop() === 'cbz') {
-      bookName = f.replace('.cbz', ''); // assumes a sane file name!
-    }
-  });
-
-  log('Status: Processing book: ' + bookName)
 }
 
 function buildBooks() {
@@ -167,10 +169,30 @@ function zipPanels() {
   execSync('zip -rj "' + dirAssets + bookName + '_panels.zip" ' + dirPanels + '*.jpg');
 }
 
+/*
+This function combines individual panels together. That's it. How many panels to
+join depends on the target device and the layout of the book.
+You should play with the logic to get the best results for your target device.
+
+The following logic is designed to fit Tintin comics in Kobo Clara screen (1148x1072 px) 
+in landscape mode.
+
+The algorithm is as follows:
+- the logic depends on the width of the panels w.r.t. the original page width (percentages refers to this ratio)
+- if a panel is more than 65% of the original page width, do nothing (it's too wide.)
+- if a panel is between 50% and 65% of the original page width, check the width of the next image, if any.
+  - if the next image is at most 15%, combine the two together. In my experience, that's the maximum combined
+  width that produced a readable strip.
+- if a panel is less than 50% of the original page width, check the width of the next image, if any.
+  - the logic is similar to the above step. configure according to your needs.
+
+"Short of some advanced wizardry, there's no way to fully automate this process. But the pain can be vastly minimized." - Michael Scott
+*/
+
 function stitchImages() {
   log('Status: Stitching panels using AI borrowed from aliens!');
 
-  const files = readdirSync(dirPanels);
+  const files = fs.readdirSync(dirPanels);
   const imageFiles = [];
 
   files.forEach(f => {
@@ -243,21 +265,21 @@ function stitchImages() {
 
 function getImageInfo(imageName) {
   const imgPath = dirPanels + imageName;
-  const result = execSync("magick identify -format '%w' " + imgPath, { encoding: 'utf8' });
+  const result = execSync("magick identify -format '%w' '" + imgPath + "'", { encoding: 'utf8' });
   return parseInt(result);
 }
 
 function mergeTwoImages(imageName1, imageName2) {
-  const imgPath1 = dirPanels + imageName1;
-  const imgPath2 = dirPanels + imageName2;
+  const imgPath1 = "'" + dirPanels + imageName1 + "'";
+  const imgPath2 = "'" + dirPanels + imageName2 + "'";
 
-  const outputFile = dirStitchedColor + (imageName1 + '_' + imageName2).replaceAll('.jpg', '') + '.jpg';
+  const outputFile = "'" + dirStitchedColor + (imageName1 + '_' + imageName2).replaceAll('.jpg', '') + '.jpg' + "'";
 
   execSync('magick montage ' + imgPath1 + ' ' + spacerImage + ' ' + imgPath2 + ' -geometry +1+1+1 ' + outputFile);
 }
 
 function saveImage(imageName) {
-  const imgPath = dirPanels + imageName;
+  const imgPath = '"' + dirPanels + imageName + '"';
   execSync('cp ' + imgPath + ' ' + dirStitchedColor);
 }
 
