@@ -4,6 +4,19 @@ Comic-san is a command line software to extract panels from comic books and sitt
 small displays of ebook readers. (Some manual interventaion is required but when tuned, 99% of the tasks can be 
 automated.)
 
+> Turn something like this:
+
+![original_iamge](https://github.com/dvnlgls/comic-san/blob/master/samples/for_read_me/original.jpg)
+
+> into something like this:
+
+![readable_image](https://github.com/dvnlgls/comic-san/blob/master/samples/for_read_me/p1.jpg)
+
+![readable_image](https://github.com/dvnlgls/comic-san/blob/master/samples/for_read_me/p2.jpg)
+
+> In the above example, the readability is not bad but it's horrible for navigation. Whereas the processed images
+are easy to navigate and offers much better visibility into the text. That's what this program is for.
+
 > Check the `samples` folder to get an idea. A complete book is not included (damn copyright laws) but you'll get an idea. The goal of
 this tool is NOT to automate the process completely but to vastly reduce manual intervention. 
 

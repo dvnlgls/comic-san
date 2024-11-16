@@ -27,6 +27,7 @@ const dirStitchedColor = dirData + 'stitched_color/'; // dir to store the stitch
 const dirStitchedBw = dirData + 'stitched_bw/'; // dir to store the stitched b/w panels
 const dirAssets = dirData + 'assets/'; // // dir to store the newly created books and any other useful stuff like panels etc
 
+// if you change the path, use an absolute one
 const spacerImage = ''; // image used to add gap between panels. modify it however you like
 
 let bookName = '';
