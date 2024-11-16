@@ -13,22 +13,23 @@ const readline = require('readline/promises');
 //------------------------------------------------------------------------
 // NOTE: The following must be set properly
 
-// absolute path to your data directory WITH the trailing slash eg: /Users/Frodo/Documents/comic-san/data/
-const dirData = '';
+// absolute path to your program directory WITH the trailing slash eg: /Users/Frodo/Documents/comic-san/
+const programDir = '';
+
+// change these:
 const originalPageWidth = 3000; // width of a single page of the original comic book (in px).
 const bwPanelResizeWidth = 1448; // width of the black & white panels apropriate for your target device
 const bwPanelResizeHeight = 1072; // height of the black & white panels apropriate for your target device
 
 //------------------------------------------------------------------------
 
+const dirData = programDir + 'data/';
+const spacerImage = programDir + 'space.jpg'; // image used to add gap between panels. modify it however you like
 const dirExtractedPages = dirData + 'extracted_pages/'; // dir to store pages extracted from the original book
 const dirPanels = dirData + 'panels/'; // dir to store the color panels extracted from the pages
 const dirStitchedColor = dirData + 'stitched_color/'; // dir to store the stitched color panels
 const dirStitchedBw = dirData + 'stitched_bw/'; // dir to store the stitched b/w panels
 const dirAssets = dirData + 'assets/'; // // dir to store the newly created books and any other useful stuff like panels etc
-
-// if you change the path, use an absolute one
-const spacerImage = ''; // image used to add gap between panels. modify it however you like
 
 let bookName = '';
 
