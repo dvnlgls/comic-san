@@ -77,14 +77,8 @@ async function main() {
   // after the panels have been extracted, it's necessary to cleanup unwanted ones and to check if they look ok
   console.log('\n=======> Comic panels have been extracted. Please check the panels directory and remove/change unwanted images');
 
-  const panelCleanupAnswer = await rl.question('\t Press y after manual cleanup. Any other key to quit the program: ');
-  if (panelCleanupAnswer.toLocaleLowerCase().trim() !== 'y') {
-    console.log('Exiting Comic-San. Please run the program manually.');
-    rl.close();
-    process.exit();
-  }
+  await rl.question('\t Press any key to continue: ');
   rl.close();
-  console.log('resuming the process...');
 
   elapsedTime = performance.now() - elapsedTime;
 
