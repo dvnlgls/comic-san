@@ -53,6 +53,8 @@ main();
 //------------------------------------------------------------------------
 
 async function main() {
+  let elapsedTime = performance.now();
+
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // order of functions is critical.
@@ -61,12 +63,16 @@ async function main() {
   findBookName(); // must be run before zipping panels to give the archive a name
   unzip(); // cbz is just an archive. unzip to get the individual pages
 
+  elapsedTime = performance.now() - elapsedTime;
+
   if (args.cpage) {
     console.log('=======> Pages have been extracted. Please check the extracted_pages directory and remove/change unwanted images');
     await rl.question('\t Press any key to continue: \n');
   }
 
+  elapsedTime = performance.now() - elapsedTime;
   await parallelExtractPanels();
+  elapsedTime = performance.now() - elapsedTime;
 
   // after the panels have been extracted, it's necessary to cleanup unwanted ones and to check if they look ok
   console.log('\n=======> Comic panels have been extracted. Please check the panels directory and remove/change unwanted images');
@@ -80,16 +86,31 @@ async function main() {
   rl.close();
   console.log('resuming the process...');
 
+  elapsedTime = performance.now() - elapsedTime;
+
   stitchImages(); // join the panels together
   convertToGreyScale();
-  resizeBwPanels(); // to optimize for the target device
-  buildColorBook(); // zip the stitched panels to create the books
+  resizeBwPanels();
+  buildColorBook();
+  buildBwBook();
   zipPanels(); // might be a good idea to save the extracted panels for future use
   cleanup();
-  console.log('\nSuccess! Enjoy your book!');
+
+  elapsedTime = performance.now() - elapsedTime;
+
+  // log the elapsed time in minutes and seconds to the console
+  elapsedTime = (elapsedTime / 1000) / 60;
+
+  const minutes = Math.floor(elapsedTime);
+  const seconds = (elapsedTime - minutes) * 60;
+  console.log('\nProcess completed in ' + minutes + ' minutes and ' + seconds.toFixed(2) + ' seconds.');
+
+  console.log('\nFind your book(s) in the assets folder. Happy reading!');
 }
 
 async function parallelExtractPanels() {
+  log('Status: Extracting panels from comic pages. Parallel processing is in progress...');
+
   return new Promise(async (resolve, reject) => {
     const files = splitFilesBasedOnCPUCOres();
     const workerPromises = [];
@@ -115,7 +136,6 @@ function spawnWorker(workerData) {
     const worker = new Worker('./worker.js', { workerData })
 
     worker.on('message', (data) => {
-      // console.log(data);
       panelExtractProgressBar.increment();
     });
     worker.on('error', reject);
@@ -196,10 +216,10 @@ function init() {
 }
 
 function cleanup() {
-  if(!args.cleanup) {
+  if (!args.cleanup) {
     return;
   }
-  
+
   // cleanup after a successful run
   log('Status: Cleaning up unwanted files...');
 
@@ -213,7 +233,7 @@ function cleanup() {
   dirs.forEach(v => {
     const dir = dirData + v;
     if (fs.existsSync(dir)) {
-      execSync('rm -rf  ' + dir + '/*.*', { encoding: 'utf8' });
+      execSync('rm -rf  ' + dir, { encoding: 'utf8' });
     }
   });
 }
@@ -235,12 +255,6 @@ function unzip() {
   log('Status: Extracting pages from the book');
 
   execSync('unzip -j ' + dirData + '*.cbz -d ' + dirExtractedPages);
-}
-
-function extractPanels() {
-  log('Status: Extracting panels. This little maneuver is gonna cost us 51 years!');
-
-  execSync('source /Users/dvn/Downloads/kumiko/bin/activate && /Users/dvn/Downloads/kumiko/./kumiko -i ' + dirExtractedPages + ' -s ' + dirPanels)
 }
 
 function convertToGreyScale() {
