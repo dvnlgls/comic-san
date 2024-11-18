@@ -34,7 +34,7 @@ Also note that the script was developed on a Mac. There's no reason why it shoul
 - You will get the following three files in the `data/assets` dir:
   - A `cbz` color book optimized for landscape reading
   - A `cbz` resized b/w book optimized for landscape reading
-  - A zip archive of all the extracted (but unstitched) panels for potential future use
+  - A zip archive of all the extracted (but unstitched) panels for potential future use (if `-zipPanels` option is used)
 
 Note: the script is modular. You can cherrypick what you need easily.
 
@@ -51,7 +51,7 @@ Note: the script is modular. You can cherrypick what you need easily.
     web based features; we just need the image splitting function.
     - IMPORTANT: You MUST make this change in kumikolib.py to run my script in its default setting:
       - Change `output_path = os.path.join(output_base_path, os.path.basename(page.filename))` to `output_path = os.path.join(output_base_path)`
-      - Change `output_file = os.path.join(output_path, f"panel_{i}.{output_format}")` to `output_file = os.path.join(output_path, f"panel_{nb_written_panels}.{output_format}")`
+      - Change `output_file = os.path.join(output_path, f"panel_{i}.{output_format}")` to `output_file = os.path.join(output_path, f"panel_{os.path.basename(page.filename.replace(' ','_').replace('.jpg',''))}_{i}.{output_format}")`
       - The reason for this change is to place all the extracted panels in a single directory instead of placing them in 
       sub-directories. You can ignore this but then you should change my script accordingly. (method `extractPanels()`)
   
@@ -85,12 +85,19 @@ appropriately (I believe in you!)
 
 - To process another book, delete everything inside the data dir and place the next book there
 
+### CLI Arguments:
+- `-log`: enable verbose logging
+- `-cpage`: enable manual cleanup of extracted pages
+- `-zipPanels`: enable zipping of extracted panels
+- `-cleanup`: cleanup unwanted files after a successful run
+- `-skipgrey`: skip conversion to grey scale
+
 ### Pointers
 
 - Processing time varies based on the book but I'll describe my experience:
-  - Intel Mac Pro 2016 16GB RAM (yes, a vintage model!)
+  - Intel Mac Pro 2016 16GB RAM, 8 cores (yes, a vintage model!)
   - Tintin books: avg 400mb. Approximately 70 color pages, resolution: 3000x4000 px.
-  - Time: approx. 6 minutes. (obviously excluding manual intervention). Use `time node main.js` to measure time.
+  - Time: approx. 3 minutes. Or 2 minutes if B/W is skipped (obviously excluding manual intervention).
 
 - File sizes:
   (Based on the Tintin book example,)

@@ -322,6 +322,7 @@ function stitchImages() {
   const files = fs.readdirSync(dirPanels);
   const imageFiles = [];
 
+  // todo: also consider jpeg?
   files.forEach(f => {
     if (f.split('.').pop() === 'jpg') {
       imageFiles.push(f);
@@ -398,6 +399,7 @@ function getImageInfo(imageName) {
   return parseInt(result);
 }
 
+// todo: make this more generic
 function mergeTwoImages(imageName1, imageName2) {
   const imgPath1 = "'" + dirPanels + imageName1 + "'";
   const imgPath2 = "'" + dirPanels + imageName2 + "'";
