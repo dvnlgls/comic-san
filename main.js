@@ -9,12 +9,16 @@ suitable for (small) e-book readers, including black & white variants.
 const fs = require('fs');
 const { execSync } = require('child_process');
 const readline = require('readline/promises');
+const { Worker } = require('worker_threads');
+const os = require('os');
+const cliProgress = require('cli-progress');
 
 //------------------------------------------------------------------------
 // NOTE: The following must be set properly
 
 // absolute path to your program directory WITH the trailing slash eg: /Users/Frodo/Documents/comic-san/
-const programDir = '';
+const programDir = '/Users/dvn/Documents/Projects/comic-san/';
+const kumikoPath = '/Users/dvn/Downloads/kumiko/';
 
 // change these:
 const originalPageWidth = 3000; // width of a single page of the original comic book (in px).
@@ -36,7 +40,13 @@ let bookName = '';
 // flags:
 // -log: enable verbose logging
 // -cpage: enable manual cleanup of extracted pages
-const args = { log: false, cpage: false }
+// -zipPanels: enable zipping of extracted panels
+// -cleanup: cleanup unwanted files after a successful run
+// -skipgrey: skip conversion to grey scale
+const args = { log: false, cpage: false, zipPanels: false, cleanup: false, skipgrey: false };
+
+const panelExtractProgressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
+const imageStitchingProgressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 
 main();
 
@@ -53,15 +63,15 @@ async function main() {
 
   if (args.cpage) {
     console.log('=======> Pages have been extracted. Please check the extracted_pages directory and remove/change unwanted images');
-    await rl.question('\tPress any key to continue: ');
+    await rl.question('\t Press any key to continue: \n');
   }
 
-  extractPanels(); // get the individual comic panels from the pages
+  await parallelExtractPanels();
 
   // after the panels have been extracted, it's necessary to cleanup unwanted ones and to check if they look ok
-  console.log('=======> Comic panels have been extracted. Please check the panels directory and remove/change unwanted images');
+  console.log('\n=======> Comic panels have been extracted. Please check the panels directory and remove/change unwanted images');
 
-  const panelCleanupAnswer = await rl.question('\tPress y after manual cleanup. Any other key to quit the program: ');
+  const panelCleanupAnswer = await rl.question('\t Press y after manual cleanup. Any other key to quit the program: ');
   if (panelCleanupAnswer.toLocaleLowerCase().trim() !== 'y') {
     console.log('Exiting Comic-San. Please run the program manually.');
     rl.close();
@@ -73,13 +83,72 @@ async function main() {
   stitchImages(); // join the panels together
   convertToGreyScale();
   resizeBwPanels(); // to optimize for the target device
-  buildBooks(); // zip the stitched panels to create the books
+  buildColorBook(); // zip the stitched panels to create the books
   zipPanels(); // might be a good idea to save the extracted panels for future use
-
-  process.exit();
+  cleanup();
+  console.log('\nSuccess! Enjoy your book!');
 }
 
-// --------------------------------------------------------
+async function parallelExtractPanels() {
+  return new Promise(async (resolve, reject) => {
+    const files = splitFilesBasedOnCPUCOres();
+    const workerPromises = [];
+
+    // count all elements in the array files, including sub-arrays and pass it to the progress bar
+    const filesLength = files.reduce((acc, curr) => acc + curr.length, 0);
+    panelExtractProgressBar.start(filesLength, 0);
+
+    for (let i = 0; i < files.length; i++) {
+      const workerData = { files: files[i], workerId: i + 1, dirExtractedPages, dirPanels, kumikoPath };
+      workerPromises.push(spawnWorker(workerData));
+    }
+
+    await Promise.all(workerPromises);
+    panelExtractProgressBar.stop();
+    resolve();
+  });
+
+}
+
+function spawnWorker(workerData) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./worker.js', { workerData })
+
+    worker.on('message', (data) => {
+      // console.log(data);
+      panelExtractProgressBar.increment();
+    });
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0)
+        reject(new Error(`Worker stopped with exit code ${code}`))
+      else
+        resolve();
+    });
+  });
+}
+
+function splitFilesBasedOnCPUCOres() {
+
+  const numCores = os.cpus().length;
+  const files = fs.readdirSync(dirExtractedPages).filter(file => file.endsWith('.jpg'));
+  const filesPerCore = Math.ceil(files.length / numCores);
+  const filesArrays = [];
+
+  // split the files into arrays based on the number of CPU cores
+  for (let i = 0; i < numCores; i++) {
+    filesArrays.push(files.slice(i * filesPerCore, (i + 1) * filesPerCore));
+  }
+
+  // remove empty arrays from filesArrays if any. (if the files array is less than the number of cores)
+  filesArrays.forEach((array, index) => {
+    if (array.length === 0) {
+      filesArrays.splice(index, 1);
+    }
+  });
+
+  return filesArrays;
+}
 
 function getArguments() {
   process.argv.slice(2).forEach(v => {
@@ -90,6 +159,15 @@ function getArguments() {
     }
     if (flag === '-cpage') {
       args.cpage = true;
+    }
+    if (flag === '-cleanup') {
+      args.cleanup = true;
+    }
+    if (flag === '-zippanels') {
+      args.zipPanels = true;
+    }
+    if (flag === '-skipgrey') {
+      args.skipgrey = true;
     }
   });
 }
@@ -113,6 +191,29 @@ function init() {
       execSync('rm -rf  ' + dir + '/*.*', { encoding: 'utf8' });
     } else {
       fs.mkdirSync(dir);
+    }
+  });
+}
+
+function cleanup() {
+  if(!args.cleanup) {
+    return;
+  }
+  
+  // cleanup after a successful run
+  log('Status: Cleaning up unwanted files...');
+
+  const dirs = [
+    'extracted_pages',
+    'panels',
+    'stitched_bw',
+    'stitched_color'
+  ];
+
+  dirs.forEach(v => {
+    const dir = dirData + v;
+    if (fs.existsSync(dir)) {
+      execSync('rm -rf  ' + dir + '/*.*', { encoding: 'utf8' });
     }
   });
 }
@@ -143,31 +244,47 @@ function extractPanels() {
 }
 
 function convertToGreyScale() {
-  log('Status: Creating B/W panels from color panels');
+  if (args.skipgrey) {
+    return;
+  }
 
+  log('Status: Creating B/W panels from color panels');
   execSync('magick mogrify -path ' + dirStitchedBw + ' -intensity average -colorspace gray  -strip -interlace Plane -quality 50% ' + dirStitchedColor + '*.jpg')
 }
 
 function resizeBwPanels() {
+  if (args.skipgrey) {
+    return;
+  }
+
   log('Status: Resizing B/W panels');
   const resolution = bwPanelResizeWidth + 'x' + bwPanelResizeHeight;
-
   execSync('mogrify -resize ' + resolution + ' ' + dirStitchedBw + '*.jpg')
 }
 
-function buildBooks() {
-  log('Status: Creating books from panels');
+function buildColorBook() {
+  log('Status: Creating color book from panels');
 
   execSync('zip -rj "' + dirAssets + bookName + '_color.cbz" ' + dirStitchedColor + '*.jpg');
   log('\tColor book created!');
+}
 
+function buildBwBook() {
+  if (args.skipgrey) {
+    return;
+  }
+
+  log('Status: Creating B/W book from panels');
   execSync('zip -rj "' + dirAssets + bookName + '_bw.cbz" ' + dirStitchedBw + '*.jpg');
   log('\tB/W book created!');
 }
 
 function zipPanels() {
-  log('Status: Zipping color panels');
+  if (!args.zipPanels) {
+    return;
+  }
 
+  log('Status: Zipping color panels');
   execSync('zip -rj "' + dirAssets + bookName + '_panels.zip" ' + dirPanels + '*.jpg');
 }
 
@@ -175,10 +292,10 @@ function zipPanels() {
 This function combines individual panels together. That's it. How many panels to
 join depends on the target device and the layout of the book.
 You should play with the logic to get the best results for your target device.
-
+ 
 The following logic is designed to fit Tintin comics in Kobo Clara screen (1148x1072 px) 
 in landscape mode.
-
+ 
 The algorithm is as follows:
 - the logic depends on the width of the panels w.r.t. the original page width (percentages refers to this ratio)
 - if a panel is more than 65% of the original page width, do nothing (it's too wide.)
@@ -187,12 +304,12 @@ The algorithm is as follows:
   width that produced a readable strip.
 - if a panel is less than 50% of the original page width, check the width of the next image, if any.
   - the logic is similar to the above step. configure according to your needs.
-
+ 
 "Short of some advanced wizardry, there's no way to fully automate this process. But the pain can be vastly minimized." - Michael Scott
 */
 
 function stitchImages() {
-  log('Status: Stitching panels using AI borrowed from aliens!');
+  log('Status: Stitching panels using AI borrowed from aliens!\n');
 
   const files = fs.readdirSync(dirPanels);
   const imageFiles = [];
@@ -202,7 +319,8 @@ function stitchImages() {
       imageFiles.push(f);
     }
   });
-  log('\tPanels found: ' + imageFiles.length);
+
+  imageStitchingProgressBar.start(imageFiles.length, 0);
 
   // sort the filenames in natural order
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -253,7 +371,7 @@ function stitchImages() {
           mergeTwoImages(imageFiles[i], imageFiles[j]);
           i++;
         } else {
-          saveImage(imageFiles[i])
+          saveImage(imageFiles[i]);
         }
       } else {
         // no more images, so just save this one
@@ -262,7 +380,8 @@ function stitchImages() {
     }
 
   }
-  log('\tIt\'s done Sam! The panels have been stitched.');
+  imageStitchingProgressBar.stop();
+  log('\nIt\'s done Sam! The panels have been stitched.');
 };
 
 function getImageInfo(imageName) {
@@ -278,13 +397,17 @@ function mergeTwoImages(imageName1, imageName2) {
   const outputFile = "'" + dirStitchedColor + (imageName1 + '_' + imageName2).replaceAll('.jpg', '') + '.jpg' + "'";
 
   execSync('magick montage ' + imgPath1 + ' ' + spacerImage + ' ' + imgPath2 + ' -geometry +1+1+1 ' + outputFile);
+  imageStitchingProgressBar.increment(2);
 }
 
 function saveImage(imageName) {
   const imgPath = '"' + dirPanels + imageName + '"';
   execSync('cp ' + imgPath + ' ' + dirStitchedColor);
+  imageStitchingProgressBar.increment();
 }
 
 function log(msg) {
   if (args.log) console.log(msg);
 }
+
+module.exports = { programDir };

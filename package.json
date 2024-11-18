@@ -1,5 +1,2 @@
-{
-  "dependencies": {
-    "gm": "^1.25.0"
-  }
-}
+{"dependencies":{"cli-progress":"^3.12.0"}}
+
