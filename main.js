@@ -417,5 +417,3 @@ function saveImage(imageName) {
 function log(msg) {
   if (args.log) console.log(msg);
 }
-
-module.exports = { programDir };
