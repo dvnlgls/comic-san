@@ -43,7 +43,7 @@ let bookName = '';
 // -zipPanels: enable zipping of extracted panels
 // -cleanup: cleanup unwanted files after a successful run
 // -skipgrey: skip conversion to grey scale
-const args = { log: false, cpage: false, zipPanels: false, cleanup: false, skipgrey: false };
+const args = { log: false, cpage: false, zipPanels: false, cleanup: false, skipgrey: false, help: false };
 
 const imageStitchingProgressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 
@@ -52,11 +52,17 @@ main();
 //------------------------------------------------------------------------
 
 async function main() {
-  let elapsedTime = performance.now();
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // order of functions is critical.
   getArguments(); // primitive method to get args passed on the cmd line
+  if(args.help) {
+    printHelp();
+    return;
+  }
+
+  let elapsedTime = performance.now();
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
   init();
   findBookName(); // must be run before zipping panels to give the archive a name
   unzip(); // cbz is just an archive. unzip to get the individual pages
@@ -200,6 +206,7 @@ function splitFilesBasedOnCpuCores(path, extension) {
 }
 
 function getArguments() {
+
   process.argv.slice(2).forEach(v => {
     const flag = v.toLocaleLowerCase().trim();
 
@@ -217,6 +224,9 @@ function getArguments() {
     }
     if (flag === '-skipgrey') {
       args.skipgrey = true;
+    }
+    if (flag === '-help') {
+      args.help = true;
     }
   });
 }
@@ -450,5 +460,20 @@ function printProcessingTime(time) {
     const seconds = (time - minutes) * 60;
     console.log('\nProcess completed in ' + minutes + ' minutes and ' + seconds.toFixed(2) + ' seconds.');
   }
+}
 
+function printHelp() {
+  console.log('\n');
+  console.log('Usage: node main.js [options]');
+  console.log('Options:');
+  console.log('\t-log: enable verbose logging');
+  console.log('\t-cpage: enable manual cleanup of extracted pages');
+  console.log('\t-zipPanels: enable zipping of extracted panels');
+  console.log('\t-cleanup: cleanup unwanted files after a successful run');
+  console.log('\t-skipgrey: skip conversion to grey scale');
+  console.log('\n');
+  console.log('NOTE: Please ensure the following:');
+  console.log('\t1. \'data\' directory is present in the same directory as main.js. If not, create it.');
+  console.log('\t2. The comic book is inside the data directory. Only one book must be present.');
+  console.log('\n');
 }
