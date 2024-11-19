@@ -45,7 +45,6 @@ let bookName = '';
 // -skipgrey: skip conversion to grey scale
 const args = { log: false, cpage: false, zipPanels: false, cleanup: false, skipgrey: false };
 
-const panelExtractProgressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 const imageStitchingProgressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 
 main();
@@ -54,7 +53,6 @@ main();
 
 async function main() {
   let elapsedTime = performance.now();
-
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // order of functions is critical.
@@ -64,73 +62,110 @@ async function main() {
   unzip(); // cbz is just an archive. unzip to get the individual pages
 
   elapsedTime = performance.now() - elapsedTime;
-
   if (args.cpage) {
     console.log('=======> Pages have been extracted. Please check the extracted_pages directory and remove/change unwanted images');
     await rl.question('\t Press any key to continue: \n');
   }
-
   elapsedTime = performance.now() - elapsedTime;
-  await parallelExtractPanels();
-  elapsedTime = performance.now() - elapsedTime;
-
+  
+  await extractPanels();
+  
   // after the panels have been extracted, it's necessary to cleanup unwanted ones and to check if they look ok
+  elapsedTime = performance.now() - elapsedTime;
   console.log('\n=======> Comic panels have been extracted. Please check the panels directory and remove/change unwanted images');
-
   await rl.question('\t Press any key to continue: ');
   rl.close();
-
   elapsedTime = performance.now() - elapsedTime;
 
   stitchImages(); // join the panels together
-  convertToGreyScale();
-  resizeBwPanels();
+  await createGreyScaleImages();
   buildColorBook();
   buildBwBook();
   zipPanels(); // might be a good idea to save the extracted panels for future use
   cleanup();
 
   elapsedTime = performance.now() - elapsedTime;
-
-  // log the elapsed time in minutes and seconds to the console
-  elapsedTime = (elapsedTime / 1000) / 60;
-
-  const minutes = Math.floor(elapsedTime);
-  const seconds = (elapsedTime - minutes) * 60;
-  console.log('\nProcess completed in ' + minutes + ' minutes and ' + seconds.toFixed(2) + ' seconds.');
-
+  printProcessingTime(elapsedTime);
   console.log('\nFind your book(s) in the assets folder. Happy reading!');
 }
 
-async function parallelExtractPanels() {
+function extractPanels() {
   log('Status: Extracting panels from comic pages. Parallel processing is in progress...');
 
+  const fileGroup = splitFilesBasedOnCpuCores(dirExtractedPages, 'jpg');
+  const totalFiles = fileGroup.reduce((acc, curr) => acc + curr.length, 0);
+
+  const progressBar = new cliProgress.SingleBar({
+    hideCursor: true,
+    stopOnComplete: true,
+  }, cliProgress.Presets.shades_classic);
+
+  progressBar.start(totalFiles, 0);
+
+  const commands = [];
+
+  fileGroup.forEach(files => {
+    const arr = [];
+    for (let i = 0; i < files.length; i++) {
+      arr.push('source  ' + kumikoPath + 'bin/activate && ' + kumikoPath + './kumiko -i ' + dirExtractedPages + files[i] + ' -s ' + dirPanels);
+    }
+    commands.push(arr);
+  });
+
+  return executeParallel(commands, progressBar);
+}
+
+function createGreyScaleImages() {
+  if (args.skipgrey) {
+    return;
+  }
+  log('Status: Creating B/W panels from color panels. Parallel processing is in progress...');
+
+  const resolution = bwPanelResizeWidth + 'x' + bwPanelResizeHeight;
+  const fileGroup = splitFilesBasedOnCpuCores(dirStitchedColor, 'jpg');
+  const totalFiles = fileGroup.reduce((acc, curr) => acc + curr.length, 0);
+
+  const progressBar = new cliProgress.SingleBar({
+    hideCursor: true,
+    stopOnComplete: true,
+  }, cliProgress.Presets.shades_classic);
+
+  progressBar.start(totalFiles, 0);
+
+  const commands = [];
+
+  fileGroup.forEach(files => {
+    const arr = [];
+    for (let i = 0; i < files.length; i++) {
+      arr.push('magick mogrify -path ' + dirStitchedBw + ' -resize ' + resolution + ' -intensity average -colorspace gray -strip -interlace Plane -quality 50% ' + dirStitchedColor + files[i]);
+    }
+    commands.push(arr);
+  });
+
+  return executeParallel(commands, progressBar);
+}
+
+async function executeParallel(commands, progressBar) {
+
   return new Promise(async (resolve, reject) => {
-    const files = splitFilesBasedOnCPUCOres();
     const workerPromises = [];
 
-    // count all elements in the array files, including sub-arrays and pass it to the progress bar
-    const filesLength = files.reduce((acc, curr) => acc + curr.length, 0);
-    panelExtractProgressBar.start(filesLength, 0);
-
-    for (let i = 0; i < files.length; i++) {
-      const workerData = { files: files[i], workerId: i + 1, dirExtractedPages, dirPanels, kumikoPath };
-      workerPromises.push(spawnWorker(workerData));
+    for (let i = 0; i < commands.length; i++) {
+      const workerData = { cmd: commands[i], workerId: i + 1 };
+      workerPromises.push(spawnWorker(workerData, progressBar));
     }
 
     await Promise.all(workerPromises);
-    panelExtractProgressBar.stop();
     resolve();
   });
-
 }
 
-function spawnWorker(workerData) {
+function spawnWorker(workerData, progressBar) {
   return new Promise((resolve, reject) => {
     const worker = new Worker('./worker.js', { workerData })
 
     worker.on('message', (data) => {
-      panelExtractProgressBar.increment();
+      progressBar.increment();
     });
     worker.on('error', reject);
     worker.on('exit', (code) => {
@@ -142,10 +177,10 @@ function spawnWorker(workerData) {
   });
 }
 
-function splitFilesBasedOnCPUCOres() {
+function splitFilesBasedOnCpuCores(path, extension) {
 
   const numCores = os.cpus().length;
-  const files = fs.readdirSync(dirExtractedPages).filter(file => file.endsWith('.jpg'));
+  const files = fs.readdirSync(path).filter(file => file.endsWith('.' + extension));
   const filesPerCore = Math.ceil(files.length / numCores);
   const filesArrays = [];
 
@@ -249,25 +284,6 @@ function unzip() {
   log('Status: Extracting pages from the book');
 
   execSync('unzip -j ' + dirData + '*.cbz -d ' + dirExtractedPages);
-}
-
-function convertToGreyScale() {
-  if (args.skipgrey) {
-    return;
-  }
-
-  log('Status: Creating B/W panels from color panels');
-  execSync('magick mogrify -path ' + dirStitchedBw + ' -intensity average -colorspace gray  -strip -interlace Plane -quality 50% ' + dirStitchedColor + '*.jpg')
-}
-
-function resizeBwPanels() {
-  if (args.skipgrey) {
-    return;
-  }
-
-  log('Status: Resizing B/W panels');
-  const resolution = bwPanelResizeWidth + 'x' + bwPanelResizeHeight;
-  execSync('mogrify -resize ' + resolution + ' ' + dirStitchedBw + '*.jpg')
 }
 
 function buildColorBook() {
@@ -418,4 +434,21 @@ function saveImage(imageName) {
 
 function log(msg) {
   if (args.log) console.log(msg);
+}
+
+function printProcessingTime(time) {
+
+  if (time < 1000) {
+    console.log('\nProcess completed in ' + time.toFixed(1) + ' ms.');
+    return;
+  } else if (time < 60000) {
+    console.log('\nProcess completed in ' + (time / 1000).toFixed(2) + ' seconds.');
+    return;
+  } else {
+    time = (time / 1000) / 60;
+    const minutes = Math.floor(time);
+    const seconds = (time - minutes) * 60;
+    console.log('\nProcess completed in ' + minutes + ' minutes and ' + seconds.toFixed(2) + ' seconds.');
+  }
+
 }
