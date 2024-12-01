@@ -95,6 +95,7 @@ appropriately (I believe in you!)
 ### Pointers
 
 - Processing time varies based on the book but I'll describe my experience:
+  - UPDATE: On Macbook Air M2 (8 cores), the time drops to 1 minute and few seconds!
   - Intel Mac Pro 2016 16GB RAM, 8 cores (yes, a vintage model!)
   - Tintin books: avg 400mb. Approximately 70 color pages, resolution: 3000x4000 px.
   - Time: approx. 3 minutes. Or 2 minutes if B/W is skipped (obviously excluding manual intervention).

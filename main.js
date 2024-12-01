@@ -17,8 +17,8 @@ const cliProgress = require('cli-progress');
 // NOTE: The following must be set properly
 
 // absolute path to your program directory WITH the trailing slash eg: /Users/Frodo/Documents/comic-san/
-const programDir = '/Users/dvn/Documents/Projects/comic-san/';
-const kumikoPath = '/Users/dvn/Downloads/kumiko/';
+const programDir = '/Users/devin/Documents/projects/comic-san/';
+const kumikoPath = '/Users/devin/Documents/projects/kumiko/';
 
 // change these:
 const originalPageWidth = 3000; // width of a single page of the original comic book (in px).
